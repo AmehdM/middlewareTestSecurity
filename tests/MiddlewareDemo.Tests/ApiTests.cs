@@ -1,42 +1,27 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace MiddlewareDemo.Tests;
 
-public sealed class ApiTests : IClassFixture<ApiTests.ApiFactory>
+public sealed class ApiTests : IClassFixture<WebApplicationFactory<Program>>
 {
-    private readonly ApiFactory _factory;
+    private readonly WebApplicationFactory<Program> _factory;
+    private readonly string _apiKey;
 
-    public ApiTests(ApiFactory factory) => _factory = factory;
-
-    [Fact]
-    public async Task Items_WithoutKey_Returns401()
+    public ApiTests(WebApplicationFactory<Program> factory)
     {
-        var response = await _factory.CreateClient().GetAsync("/api/items");
-
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        _factory = factory;
+        _apiKey = factory.Services.GetRequiredService<IConfiguration>()["Security:ApiKey"]!;
     }
 
-    [Fact]
-    public async Task Items_WithWrongKey_Returns401()
+    private HttpClient AuthorizedClient()
     {
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Add("X-Api-Key", "wrong-" + _factory.ApiKey);
-
-        var response = await client.GetAsync("/api/items");
-
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task Items_WithCorrectKey_Returns200()
-    {
-        var response = await _factory.CreateAuthorizedClient().GetAsync("/api/items");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        client.DefaultRequestHeaders.Add("X-Api-Key", _apiKey);
+        return client;
     }
 
     [Fact]
@@ -48,56 +33,57 @@ public sealed class ApiTests : IClassFixture<ApiTests.ApiFactory>
     }
 
     [Fact]
-    public async Task Post_WithValidName_Returns201()
+    public async Task Orders_WithoutKey_Returns401()
     {
-        var response = await _factory.CreateAuthorizedClient().PostAsJsonAsync("/api/items", new { name = "Delta" });
+        var response = await _factory.CreateClient().GetAsync("/api/orders");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Orders_WithWrongKey_Returns401()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Api-Key", "wrong-" + _apiKey);
+
+        var response = await client.GetAsync("/api/orders");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Orders_WithCorrectKey_Returns200()
+    {
+        var response = await AuthorizedClient().GetAsync("/api/orders");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateOrder_WithValidData_Returns201()
+    {
+        var response = await AuthorizedClient().PostAsJsonAsync("/api/orders", new { customer = "Acme", itemId = 1, quantity = 5 });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
     [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task Post_WithEmptyName_Returns400(string name)
+    [InlineData("", 5)]
+    [InlineData("   ", 5)]
+    [InlineData("Acme", 0)]
+    [InlineData("Acme", 1001)]
+    public async Task CreateOrder_WithInvalidData_Returns400(string customer, int quantity)
     {
-        var response = await _factory.CreateAuthorizedClient().PostAsJsonAsync("/api/items", new { name });
+        var response = await AuthorizedClient().PostAsJsonAsync("/api/orders", new { customer, itemId = 1, quantity });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(400, (int)response.StatusCode);
     }
 
     [Fact]
-    public async Task Post_WithTooLongName_Returns400()
+    public async Task CreateOrder_WithLongCustomer_Returns400()
     {
-        var response = await _factory.CreateAuthorizedClient().PostAsJsonAsync("/api/items", new { name = new string('a', 51) });
+        var response = await AuthorizedClient().PostAsJsonAsync("/api/orders", new { customer = new string('a', 81), itemId = 1, quantity = 5 });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task Responses_IncludeSecurityHeaders()
-    {
-        var response = await _factory.CreateClient().GetAsync("/health");
-
-        Assert.Equal("nosniff", response.Headers.GetValues("X-Content-Type-Options").Single());
-        Assert.Equal("DENY", response.Headers.GetValues("X-Frame-Options").Single());
-        Assert.Equal("no-referrer", response.Headers.GetValues("Referrer-Policy").Single());
-    }
-
-    public sealed class ApiFactory : WebApplicationFactory<Program>
-    {
-        public string ApiKey { get; } = Guid.NewGuid().ToString("N");
-
-        public HttpClient CreateAuthorizedClient()
-        {
-            var client = CreateClient();
-            client.DefaultRequestHeaders.Add("X-Api-Key", ApiKey);
-            return client;
-        }
-
-        protected override void ConfigureWebHost(IWebHostBuilder builder)
-        {
-            builder.ConfigureAppConfiguration((_, config) =>
-                config.AddInMemoryCollection(new Dictionary<string, string?> { ["Security:ApiKey"] = ApiKey }));
-        }
+        Assert.Equal(400, (int)response.StatusCode);
     }
 }

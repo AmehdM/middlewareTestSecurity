@@ -1,76 +1,40 @@
-using MiddlewareDemo.Api;
-
-const int MaxNameLength = 50;
+using MiddlewareDemo.Api.Endpoints;
+using MiddlewareDemo.Api.Middleware;
+using MiddlewareDemo.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.ConfigureKestrel(options =>
-{
-    options.AddServerHeader = false;
-    options.Limits.MaxRequestBodySize = 10 * 1024;
-});
-
-builder.Services.AddSingleton<ItemStore>();
+builder.Services.AddSingleton<UserService>();
+builder.Services.AddSingleton<TokenService>();
+builder.Services.AddSingleton<ItemRepository>();
+builder.Services.AddSingleton<OrderStore>();
+builder.Services.AddSingleton<ReportService>();
+builder.Services.AddDirectoryBrowser();
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(policy =>
-    {
-        var origin = builder.Configuration["Cors:AllowedOrigin"];
-        if (string.IsNullOrWhiteSpace(origin) || origin.Contains('*'))
-        {
-            throw new InvalidOperationException(
-                "Configuration 'Cors:AllowedOrigin' must be a single explicit origin (wildcards are not allowed).");
-        }
-
-        policy.WithOrigins(origin).WithMethods("GET", "POST").WithHeaders("Content-Type", ApiKeyMiddleware.HeaderName);
-    });
+    options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
 });
 
 var app = builder.Build();
 
-if (string.IsNullOrWhiteSpace(app.Configuration[ApiKeyMiddleware.ConfigKey]))
-{
-    throw new InvalidOperationException(
-        $"Missing required configuration '{ApiKeyMiddleware.ConfigKey}'. Set the environment variable 'Security__ApiKey' before starting the app.");
-}
+app.UseDeveloperExceptionPage();
 
-app.UseMiddleware<SecurityHeadersMiddleware>();
-
-if (!app.Environment.IsDevelopment())
+app.Use((context, next) =>
 {
-    app.UseExceptionHandler(errorApp => errorApp.Run(context =>
-    {
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        return context.Response.WriteAsJsonAsync(new { error = "internal_error" });
-    }));
-    app.UseHsts();
-    app.UseHttpsRedirection();
-}
+    context.Response.Headers["X-Powered-By"] = "ASP.NET Core 8.0 / Kestrel";
+    return next(context);
+});
 
 app.UseCors();
+app.UseStaticFiles();
+app.UseDirectoryBrowser();
+app.UseMiddleware<SecurityHeadersMiddleware>();
+app.UseMiddleware<RequestLoggingMiddleware>();
+app.UseMiddleware<RateLimitMiddleware>();
 app.UseMiddleware<ApiKeyMiddleware>();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
-
-var items = app.MapGroup("/api/items");
-
-items.MapGet("/", (ItemStore store) => Results.Ok(store.GetAll()));
-
-items.MapPost("/", (CreateItemRequest request, ItemStore store) =>
-{
-    var name = request.Name?.Trim();
-    if (string.IsNullOrEmpty(name) || name.Length > MaxNameLength)
-    {
-        return Results.ValidationProblem(new Dictionary<string, string[]>
-        {
-            ["name"] = [$"Name is required and must be at most {MaxNameLength} characters."],
-        });
-    }
-
-    var item = store.Add(name);
-    return Results.Created("/api/items", item);
-});
+app.MapApiEndpoints();
 
 app.Run();
 
-public partial class Program;
+public partial class Program { }

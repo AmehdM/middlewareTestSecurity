@@ -8,7 +8,24 @@ namespace MiddlewareDemo.Api.Services;
 
 public sealed class TokenService
 {
-    private const string SigningKey = "lab-jwt-signing-key-9f2c61d84be7a350-demo";
+    public const string ConfigKey = "Security:JwtKey";
+    public const int MinKeyLength = 32;
+
+    private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(30);
+
+    private readonly SymmetricSecurityKey _key;
+    private readonly JwtSecurityTokenHandler _handler = new();
+
+    public TokenService(IConfiguration configuration)
+    {
+        var secret = configuration[ConfigKey];
+        if (string.IsNullOrEmpty(secret) || secret.Length < MinKeyLength)
+        {
+            throw new InvalidOperationException($"Configuration '{ConfigKey}' must have at least {MinKeyLength} characters.");
+        }
+
+        _key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+    }
 
     public string Create(User user)
     {
@@ -20,12 +37,34 @@ public sealed class TokenService
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(ClaimTypes.Role, user.Role),
             ]),
-            SigningCredentials = new SigningCredentials(
-                new SymmetricSecurityKey(Encoding.UTF8.GetBytes(SigningKey)),
-                SecurityAlgorithms.HmacSha256),
+            Expires = DateTime.UtcNow.Add(Lifetime),
+            SigningCredentials = new SigningCredentials(_key, SecurityAlgorithms.HmacSha256),
         };
 
-        var handler = new JwtSecurityTokenHandler();
-        return handler.WriteToken(handler.CreateToken(descriptor));
+        return _handler.WriteToken(_handler.CreateToken(descriptor));
+    }
+
+    public ClaimsPrincipal? Validate(string token)
+    {
+        var parameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = _key,
+            ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            RequireExpirationTime = true,
+            ClockSkew = TimeSpan.FromMinutes(1),
+        };
+
+        try
+        {
+            return _handler.ValidateToken(token, parameters, out _);
+        }
+        catch (Exception ex) when (ex is SecurityTokenException or ArgumentException)
+        {
+            return null;
+        }
     }
 }

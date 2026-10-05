@@ -8,7 +8,16 @@ public sealed class SecurityHeadersMiddleware
 
     public Task InvokeAsync(HttpContext context)
     {
-        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        context.Response.OnStarting(static state =>
+        {
+            var headers = ((HttpContext)state).Response.Headers;
+            headers["X-Content-Type-Options"] = "nosniff";
+            headers["X-Frame-Options"] = "DENY";
+            headers["Referrer-Policy"] = "no-referrer";
+            headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
+            return Task.CompletedTask;
+        }, context);
+
         return _next(context);
     }
 }

@@ -4,11 +4,11 @@ namespace MiddlewareDemo.Api.Services;
 
 public sealed class ReportService
 {
-    public async Task<string> FetchRatesAsync()
-    {
-        using var client = new HttpClient();
-        return await client.GetStringAsync("https://rates.example.com/v1/latest");
-    }
+    private readonly HttpClient _client;
+
+    public ReportService(HttpClient client) => _client = client;
+
+    public Task<string> FetchRatesAsync() => _client.GetStringAsync("https://rates.example.com/v1/latest");
 
     public IReadOnlyList<MedicalClaim> GetMedicalClaims() =>
     [

@@ -24,11 +24,17 @@ public sealed class UserService
             adminPassword = RandomPassword();
         }
 
+        var userPassword = configuration["Seed:UserPassword"];
+        if (string.IsNullOrEmpty(userPassword))
+        {
+            userPassword = RandomPassword();
+        }
+
         _users =
         [
             new User { Id = 1, Email = "admin@lab.local", PasswordHash = HashPassword(adminPassword), Role = "admin", NationalId = "0801-1985-00123", Salary = 4200m },
-            new User { Id = 2, Email = "ana.lopez@lab.local", PasswordHash = HashPassword(RandomPassword()), Role = "user", NationalId = "0801-1992-04567", Salary = 1850m },
-            new User { Id = 3, Email = "carlos.ruiz@lab.local", PasswordHash = HashPassword(RandomPassword()), Role = "user", NationalId = "0501-1988-02210", Salary = 2100m },
+            new User { Id = 2, Email = "ana.lopez@lab.local", PasswordHash = HashPassword(userPassword), Role = "user", NationalId = "0801-1992-04567", Salary = 1850m },
+            new User { Id = 3, Email = "carlos.ruiz@lab.local", PasswordHash = HashPassword(userPassword), Role = "user", NationalId = "0501-1988-02210", Salary = 2100m },
         ];
     }
 

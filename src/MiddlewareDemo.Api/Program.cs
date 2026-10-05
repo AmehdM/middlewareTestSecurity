@@ -1,3 +1,5 @@
+using System.Net;
+using Microsoft.AspNetCore.HttpOverrides;
 using MiddlewareDemo.Api.Endpoints;
 using MiddlewareDemo.Api.Middleware;
 using MiddlewareDemo.Api.Services;
@@ -8,6 +10,31 @@ builder.WebHost.ConfigureKestrel(options =>
 {
     options.AddServerHeader = false;
     options.Limits.MaxRequestBodySize = 64 * 1024;
+});
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+    options.ForwardLimit = 1;
+
+    foreach (var entry in (builder.Configuration["ForwardedHeaders:KnownNetworks"] ?? "")
+                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        var parts = entry.Split('/');
+        if (parts.Length == 2 && IPAddress.TryParse(parts[0], out var address) && int.TryParse(parts[1], out var prefix))
+        {
+            options.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(address, prefix));
+        }
+    }
+
+    foreach (var proxy in (builder.Configuration["ForwardedHeaders:KnownProxies"] ?? "")
+                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        if (IPAddress.TryParse(proxy, out var address))
+        {
+            options.KnownProxies.Add(address);
+        }
+    }
 });
 
 builder.Services.AddSingleton<UserService>();
@@ -45,6 +72,7 @@ if ((app.Configuration[TokenService.ConfigKey] ?? "").Length < TokenService.MinK
         $"Configuration '{TokenService.ConfigKey}' must have at least {TokenService.MinKeyLength} characters.");
 }
 
+app.UseForwardedHeaders();
 app.UseMiddleware<SecurityHeadersMiddleware>();
 
 if (app.Environment.IsDevelopment())

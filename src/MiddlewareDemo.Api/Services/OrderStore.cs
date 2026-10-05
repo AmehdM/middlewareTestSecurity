@@ -15,11 +15,19 @@ public sealed class OrderStore
         }
     }
 
-    public Order Add(string customer, int itemId, int quantity)
+    public IReadOnlyList<Order> ForOwner(int ownerId)
     {
         lock (_lock)
         {
-            var order = new Order(_orders.Count + 1, customer, itemId, quantity);
+            return _orders.Where(o => o.OwnerId == ownerId).ToArray();
+        }
+    }
+
+    public Order Add(int ownerId, string customer, int itemId, int quantity)
+    {
+        lock (_lock)
+        {
+            var order = new Order(_orders.Count + 1, ownerId, customer, itemId, quantity);
             _orders.Add(order);
             return order;
         }

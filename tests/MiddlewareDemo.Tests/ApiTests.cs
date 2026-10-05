@@ -9,6 +9,10 @@ namespace MiddlewareDemo.Tests;
 
 public sealed class ApiTests : IClassFixture<ApiTests.ApiFactory>
 {
+    private const string Admin = "admin@lab.local";
+    private const string Ana = "ana.lopez@lab.local";
+    private const string Carlos = "carlos.ruiz@lab.local";
+
     private readonly ApiFactory _factory;
 
     public ApiTests(ApiFactory factory) => _factory = factory;
@@ -41,11 +45,37 @@ public sealed class ApiTests : IClassFixture<ApiTests.ApiFactory>
     }
 
     [Fact]
-    public async Task Orders_WithCorrectKey_Returns200()
+    public async Task Orders_WithKeyButNoToken_Returns401()
     {
-        var response = await _factory.CreateAuthorizedClient().GetAsync("/api/orders");
+        var response = await _factory.CreateKeyClient().GetAsync("/api/orders");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Orders_WithKeyAndToken_Returns200()
+    {
+        var client = await _factory.CreateUserClientAsync(Ana);
+
+        var response = await client.GetAsync("/api/orders");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Orders_AreVisibleOnlyToTheirOwnerAndAdmin()
+    {
+        var ana = await _factory.CreateUserClientAsync(Ana);
+        var customer = "Owner-" + Guid.NewGuid().ToString("N");
+        var created = await ana.PostAsJsonAsync("/api/orders", new { customer, itemId = 1, quantity = 2 });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+
+        var carlos = await _factory.CreateUserClientAsync(Carlos);
+        var admin = await _factory.CreateUserClientAsync(Admin);
+
+        Assert.Contains(customer, await ana.GetStringAsync("/api/orders"));
+        Assert.DoesNotContain(customer, await carlos.GetStringAsync("/api/orders"));
+        Assert.Contains(customer, await admin.GetStringAsync("/api/orders"));
     }
 
     [Fact]
@@ -57,9 +87,39 @@ public sealed class ApiTests : IClassFixture<ApiTests.ApiFactory>
     }
 
     [Fact]
+    public async Task HealthcareClaims_WithKeyButNoToken_Returns401()
+    {
+        var response = await _factory.CreateKeyClient().GetAsync("/api/reports/healthcare-claims");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task HealthcareClaims_WithNonAdminToken_Returns403()
+    {
+        var client = await _factory.CreateUserClientAsync(Ana);
+
+        var response = await client.GetAsync("/api/reports/healthcare-claims");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task HealthcareClaims_WithAdminToken_Returns200()
+    {
+        var client = await _factory.CreateUserClientAsync(Admin);
+
+        var response = await client.GetAsync("/api/reports/healthcare-claims");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task CreateOrder_WithValidData_Returns201()
     {
-        var response = await _factory.CreateAuthorizedClient().PostAsJsonAsync("/api/orders", new { customer = "Acme", itemId = 1, quantity = 5 });
+        var client = await _factory.CreateUserClientAsync(Ana);
+
+        var response = await client.PostAsJsonAsync("/api/orders", new { customer = "Acme", itemId = 1, quantity = 5 });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
@@ -71,7 +131,9 @@ public sealed class ApiTests : IClassFixture<ApiTests.ApiFactory>
     [InlineData("Acme", 1001)]
     public async Task CreateOrder_WithInvalidData_Returns400(string customer, int quantity)
     {
-        var response = await _factory.CreateAuthorizedClient().PostAsJsonAsync("/api/orders", new { customer, itemId = 1, quantity });
+        var client = await _factory.CreateUserClientAsync(Ana);
+
+        var response = await client.PostAsJsonAsync("/api/orders", new { customer, itemId = 1, quantity });
 
         Assert.Equal(400, (int)response.StatusCode);
     }
@@ -79,7 +141,9 @@ public sealed class ApiTests : IClassFixture<ApiTests.ApiFactory>
     [Fact]
     public async Task CreateOrder_WithLongCustomer_Returns400()
     {
-        var response = await _factory.CreateAuthorizedClient().PostAsJsonAsync("/api/orders", new { customer = new string('a', 81), itemId = 1, quantity = 5 });
+        var client = await _factory.CreateUserClientAsync(Ana);
+
+        var response = await client.PostAsJsonAsync("/api/orders", new { customer = new string('a', 81), itemId = 1, quantity = 5 });
 
         Assert.Equal(400, (int)response.StatusCode);
     }
@@ -98,20 +162,25 @@ public sealed class ApiTests : IClassFixture<ApiTests.ApiFactory>
     [Fact]
     public async Task UserProfile_WithoutToken_Returns401()
     {
-        var response = await _factory.CreateAuthorizedClient().GetAsync("/api/users/2");
+        var response = await _factory.CreateKeyClient().GetAsync("/api/users/2");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
+    public async Task UserProfile_OfAnotherUser_Returns403()
+    {
+        var client = await _factory.CreateUserClientAsync(Ana);
+
+        var response = await client.GetAsync("/api/users/3");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task AdminToken_CanReadAdminListWithoutPasswordHashes()
     {
-        var client = _factory.CreateAuthorizedClient();
-        var login = await client.PostAsJsonAsync("/api/auth/login", new { email = "admin@lab.local", password = _factory.AdminPassword });
-        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
-
-        var token = (await login.Content.ReadFromJsonAsync<Dictionary<string, string>>())!["token"];
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var client = await _factory.CreateUserClientAsync(Admin);
 
         var response = await client.GetAsync("/api/admin/users");
         var body = await response.Content.ReadAsStringAsync();
@@ -122,14 +191,34 @@ public sealed class ApiTests : IClassFixture<ApiTests.ApiFactory>
 
     public sealed class ApiFactory : WebApplicationFactory<Program>
     {
+        private readonly Dictionary<string, Lazy<Task<string>>> _tokens = new();
+        private readonly object _lock = new();
+
         public string ApiKey { get; } = Guid.NewGuid().ToString("N");
         public string JwtKey { get; } = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
-        public string AdminPassword { get; } = Guid.NewGuid().ToString("N");
+        public string Password { get; } = Guid.NewGuid().ToString("N");
 
-        public HttpClient CreateAuthorizedClient()
+        public HttpClient CreateKeyClient()
         {
             var client = CreateClient();
             client.DefaultRequestHeaders.Add("X-Api-Key", ApiKey);
+            return client;
+        }
+
+        public async Task<HttpClient> CreateUserClientAsync(string email)
+        {
+            Lazy<Task<string>> token;
+            lock (_lock)
+            {
+                if (!_tokens.TryGetValue(email, out token!))
+                {
+                    token = new Lazy<Task<string>>(() => LoginAsync(email));
+                    _tokens[email] = token;
+                }
+            }
+
+            var client = CreateKeyClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await token.Value);
             return client;
         }
 
@@ -140,8 +229,16 @@ public sealed class ApiTests : IClassFixture<ApiTests.ApiFactory>
                 {
                     ["Security:ApiKey"] = ApiKey,
                     ["Security:JwtKey"] = JwtKey,
-                    ["Seed:AdminPassword"] = AdminPassword,
+                    ["Seed:AdminPassword"] = Password,
+                    ["Seed:UserPassword"] = Password,
                 }));
+        }
+
+        private async Task<string> LoginAsync(string email)
+        {
+            var response = await CreateKeyClient().PostAsJsonAsync("/api/auth/login", new { email, password = Password });
+            response.EnsureSuccessStatusCode();
+            return (await response.Content.ReadFromJsonAsync<Dictionary<string, string>>())!["token"];
         }
     }
 }

@@ -22,7 +22,7 @@ public sealed record Item(int Id, string Name, double Price);
 
 public sealed record CreateItemRequest(string? Name, double Price);
 
-public sealed record Order(int Id, string Customer, int ItemId, int Quantity);
+public sealed record Order(int Id, int OwnerId, string Customer, int ItemId, int Quantity);
 
 public sealed record CreateOrderRequest(string? Customer, int ItemId, int Quantity);
 

@@ -14,6 +14,7 @@ public sealed class SecurityHeadersMiddleware
             headers["X-Content-Type-Options"] = "nosniff";
             headers["X-Frame-Options"] = "DENY";
             headers["Referrer-Policy"] = "no-referrer";
+            headers["Cache-Control"] = "no-store";
             headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
             return Task.CompletedTask;
         }, context);

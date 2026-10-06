@@ -157,6 +157,53 @@ public sealed class ApiTests : IClassFixture<ApiTests.ApiFactory>
         Assert.Equal("DENY", response.Headers.GetValues("X-Frame-Options").Single());
         Assert.Equal("no-referrer", response.Headers.GetValues("Referrer-Policy").Single());
         Assert.False(response.Headers.Contains("X-Powered-By"));
+        Assert.Contains("no-store", response.Headers.CacheControl!.ToString());
+    }
+
+    [Fact]
+    public async Task CreateItem_WithoutToken_Returns401()
+    {
+        var response = await _factory.CreateKeyClient().PostAsJsonAsync("/api/items", new { name = "Widget", price = 10 });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateItem_WithNonAdminToken_Returns403()
+    {
+        var client = await _factory.CreateUserClientAsync(Ana);
+
+        var response = await client.PostAsJsonAsync("/api/items", new { name = "Widget", price = 10 });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Files_WithoutToken_Returns401()
+    {
+        var response = await _factory.CreateKeyClient().GetAsync("/api/files/report.txt");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Files_WithNonAdminToken_Returns403()
+    {
+        var client = await _factory.CreateUserClientAsync(Ana);
+
+        var response = await client.GetAsync("/api/files/report.txt");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Files_OutsideTheFilesFolder_Returns404ForAdmin()
+    {
+        var client = await _factory.CreateUserClientAsync(Admin);
+
+        var response = await client.GetAsync("/api/files/..%2Fappsettings.json");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]

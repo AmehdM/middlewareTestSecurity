@@ -164,8 +164,14 @@ public static class ApiEndpoints
             }
         });
 
-        app.MapPost("/api/items", async (CreateItemRequest request, ItemRepository items) =>
+        app.MapPost("/api/items", async (CreateItemRequest request, HttpContext context, ItemRepository items, TokenService tokens) =>
         {
+            var (_, failure) = Authorize(context, tokens, "admin");
+            if (failure is not null)
+            {
+                return failure;
+            }
+
             var name = request.Name?.Trim();
             if (string.IsNullOrEmpty(name) || name.Length > MaxNameLength)
             {
@@ -289,8 +295,14 @@ public static class ApiEndpoints
 
     private static void MapFiles(WebApplication app)
     {
-        app.MapGet("/api/files/{**name}", (string name) =>
+        app.MapGet("/api/files/{**name}", (string name, HttpContext context, TokenService tokens) =>
         {
+            var (_, failure) = Authorize(context, tokens, "admin");
+            if (failure is not null)
+            {
+                return failure;
+            }
+
             var root = Path.GetFullPath(FilesRoot) + Path.DirectorySeparatorChar;
             var full = Path.GetFullPath(Path.Combine(FilesRoot, name));
             var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;

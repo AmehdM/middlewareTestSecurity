@@ -1,0 +1,23 @@
+@model PagedResult<AuditEntry>
+@{
+    ViewData["Title"] = "Audit trail";
+}
+<h2>Audit trail</h2>
+<p>Page @Model.Page - @Model.Total entries</p>
+<table id="audit-table">
+    <thead>
+        <tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>Detail</th></tr>
+    </thead>
+    <tbody>
+    @foreach (var entry in Model.Items)
+    {
+        <tr>
+            <td>@entry.At.ToString("u")</td>
+            <td>@entry.Actor</td>
+            <td>@entry.Action</td>
+            <td>@entry.Target</td>
+            <td>@Html.Raw(entry.Detail)</td>
+        </tr>
+    }
+    </tbody>
+</table>

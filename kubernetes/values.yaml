@@ -20,3 +20,18 @@ env:
   ASPNETCORE_URLS: "http://*:80"
   Security__ApiKey: "lab-api-key-7c1e9a52d3f84b06"
   ConnectionStrings__SqlServer: "Server=sql-lab.internal,1433;Database=MiddlewareDemo;User Id=sa;Password=Lab#Pass2024!;TrustServerCertificate=True"
+
+externalSecrets:
+  enabled: true
+  secretName: middleware-demo-external
+  env:
+    - name: ConnectionStrings__SqlServer
+      valueFrom:
+        secretKeyRef:
+          name: middleware-demo-external
+          key: sql-connection
+    - name: Security__ApiKey
+      valueFrom:
+        secretKeyRef:
+          name: middleware-demo-external
+          key: api-key

@@ -23,7 +23,13 @@ public sealed class ApiKeyMiddleware
             return;
         }
 
-        var provided = context.Request.Headers[HeaderName].ToString();
+        if (context.Request.Path.StartsWithSegments("/api/internal"))
+        {
+            await _next(context);
+            return;
+        }
+
+        var provided =context.Request.Headers[HeaderName].ToString();
         if (provided == _apiKey)
         {
             await _next(context);

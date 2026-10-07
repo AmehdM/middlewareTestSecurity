@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: middleware-demo-api
+  namespace: pharma
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: middleware-demo-api
+  template:
+    metadata:
+      labels:
+        app: middleware-demo-api
+    spec:
+      hostNetwork: true
+      containers:
+        - name: api
+          image: registry.farmacia-demo.example/middleware-demo:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            allowPrivilegeEscalation: true
+          env:
+            - name: ASPNETCORE_URLS
+              value: "http://*:80"
+            - name: ConnectionStrings__SqlServer
+              valueFrom:
+                secretKeyRef:
+                  name: middleware-demo-secrets
+                  key: sql-connection
+          volumeMounts:
+            - name: host-logs
+              mountPath: /var/log/host
+      volumes:
+        - name: host-logs
+          hostPath:
+            path: /var/log

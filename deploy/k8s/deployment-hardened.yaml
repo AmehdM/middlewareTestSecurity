@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: middleware-demo-api-secure
+  namespace: pharma
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: middleware-demo-api-secure
+  template:
+    metadata:
+      labels:
+        app: middleware-demo-api-secure
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: registry.farmacia-demo.example/middleware-demo@sha256:3b7e1f09c5a2d84e6b10f7a93c2d58e41b6a09d7c3f85e2a1d4b7c09e6f38a12
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ASPNETCORE_URLS
+              value: "http://*:8080"
+            - name: ConnectionStrings__SqlServer
+              valueFrom:
+                secretKeyRef:
+                  name: middleware-demo-external
+                  key: sql-connection
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

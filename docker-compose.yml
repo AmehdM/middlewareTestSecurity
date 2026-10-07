@@ -1,0 +1,85 @@
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: src/MiddlewareDemo.Api/Dockerfile
+    image: middleware-demo-api:dev
+    ports:
+      - "8080:80"
+    environment:
+      ASPNETCORE_URLS: "http://*:80"
+      ConnectionStrings__SqlServer: "Server=sqlserver,1433;Database=MiddlewareDemo;User Id=sa;Password=admin123;TrustServerCertificate=True"
+      ConnectionStrings__Redis: "redis:6379,password=redis123"
+      Security__ApiKey: "pharma-api-9f2c61d07be44a85"
+      Jwt__SigningKey: "dGhpcy1pcy1hLWxhYi1zaWduaW5nLWtleS0zMjg5NDc="
+      Smtp__Host: "smtp-relay"
+      Smtp__Port: "25"
+    depends_on:
+      - sqlserver
+      - redis
+      - smtp-relay
+    volumes:
+      - ./uploads:/app/wwwroot/uploads
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: src/MiddlewareDemo.Worker/Dockerfile
+    image: middleware-demo-worker:dev
+    environment:
+      ConnectionStrings__SqlServer: "Server=sqlserver,1433;Database=MiddlewareDemo;User Id=sa;Password=admin123;TrustServerCertificate=True"
+      ConnectionStrings__Redis: "redis:6379,password=redis123"
+      Smtp__Host: "smtp-relay"
+      Smtp__Password: "relay-Q8v2mX7pL4"
+    depends_on:
+      - sqlserver
+      - redis
+    volumes:
+      - /:/host:rw
+      - ./exports:/app/exports
+    privileged: true
+    restart: unless-stopped
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "admin123"
+    ports:
+      - "0.0.0.0:1433:1433"
+    volumes:
+      - sqldata:/var/opt/mssql
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: middlewaredemo
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--requirepass", "redis123", "--protected-mode", "no"]
+    ports:
+      - "0.0.0.0:6379:6379"
+
+  smtp-relay:
+    image: namshi/smtp:latest
+    environment:
+      RELAY_NETWORKS: ":0.0.0.0/0"
+      SMARTHOST_USER: "relay@farmacia-demo.example"
+      SMARTHOST_PASSWORD: "relay-Q8v2mX7pL4"
+    ports:
+      - "25:25"
+
+volumes:
+  sqldata:
+  pgdata:

@@ -13,6 +13,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MiddlewareDemo.Api\MiddlewareDemo.Api.csproj" />
+    <ProjectReference Include="..\..\src\MiddlewareDemo.Core\MiddlewareDemo.Core.csproj" />
+    <ProjectReference Include="..\..\src\MiddlewareDemo.Infrastructure\MiddlewareDemo.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\MiddlewareDemo.Worker\MiddlewareDemo.Worker.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.Test.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

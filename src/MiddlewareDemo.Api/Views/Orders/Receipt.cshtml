@@ -1,0 +1,16 @@
+@model OrderDto
+@{
+    ViewData["Title"] = "Receipt #" + Model.Id;
+}
+<h2>Receipt #@Model.Id</h2>
+<p>Status: @Model.Status - issued @Model.CreatedAt.ToString("yyyy-MM-dd HH:mm")</p>
+<table>
+    <thead><tr><th>Product</th><th>Qty</th></tr></thead>
+    <tbody>
+    @foreach (var line in Model.Lines)
+    {
+        <tr><td>@line.ProductId</td><td>@line.Quantity</td></tr>
+    }
+    </tbody>
+</table>
+<p><strong>Total: @Model.Total.ToString("C")</strong></p>

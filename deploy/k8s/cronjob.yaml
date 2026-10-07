@@ -1,0 +1,29 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stock-sync
+  namespace: pharma
+spec:
+  schedule: "*/15 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: worker
+              image: registry.farmacia-demo.example/middleware-demo-worker:latest
+              imagePullPolicy: Always
+              securityContext:
+                privileged: true
+                runAsUser: 0
+              env:
+                - name: ConnectionStrings__Redis
+                  value: "redis:6379,password=redis123"
+              volumeMounts:
+                - name: exports
+                  mountPath: /app/exports
+          volumes:
+            - name: exports
+              hostPath:
+                path: /data/exports

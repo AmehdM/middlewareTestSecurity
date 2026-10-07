@@ -32,6 +32,10 @@ public static class FilesEndpoints
                 ContentType = "application/x-convert-queue",
             }, ct);
 
+            var queueDir = Path.Combine(Path.GetTempPath(), "middlewaredemo-queue");
+            Directory.CreateDirectory(queueDir);
+            await File.WriteAllTextAsync(Path.Combine(queueDir, $"{record.Id}.job"), file.FileName, ct);
+
             return Results.Ok(new { record.Id, url = $"/uploads/{file.FileName}" });
         }).DisableAntiforgery().RequireAuthorization();
 

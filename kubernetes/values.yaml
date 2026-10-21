@@ -18,7 +18,7 @@ resources:
 
 env:
   ASPNETCORE_URLS: "http://*:80"
-  ForwardedHeaders__KnownNetworks: "10.0.0.0/8"
+  ForwardedHeaders__KnownNetworks: "10.244.0.0/24"
 
 secrets:
   apiKeySecretName: middleware-demo-api-key

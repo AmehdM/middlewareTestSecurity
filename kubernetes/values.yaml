@@ -17,7 +17,7 @@ resources:
     memory: 128Mi
 
 env:
-  ASPNETCORE_URLS: "http://*:8080"
+  ASPNETCORE_URLS: "http://*:80"
   ForwardedHeaders__KnownNetworks: "10.0.0.0/8"
 
 secrets:

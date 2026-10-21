@@ -190,6 +190,18 @@ public sealed class ApiTests : IClassFixture<ApiTests.ApiFactory>
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("/api/items/validate-sku")]
+    [InlineData("/api/items/validate-sku?value=")]
+    public async Task ValidateSku_WithMissingValue_Returns400(string path)
+    {
+        var client = await _factory.CreateUserClientAsync(Ana);
+
+        var response = await client.GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task Items_WithUserToken_Returns200()
     {

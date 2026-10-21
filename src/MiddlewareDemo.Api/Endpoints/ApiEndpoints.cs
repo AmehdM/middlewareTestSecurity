@@ -107,11 +107,11 @@ public static class ApiEndpoints
             return Results.Ok(result);
         }).RequireAuthorization();
 
-        app.MapGet("/api/items/validate-sku", (string value) =>
+        app.MapGet("/api/items/validate-sku", (string? value) =>
         {
-            if (value.Length > 64)
+            if (string.IsNullOrEmpty(value) || value.Length > 64)
             {
-                return Invalid("value", "Value must be at most 64 characters.");
+                return Invalid("value", "Value is required and must be at most 64 characters.");
             }
 
             try

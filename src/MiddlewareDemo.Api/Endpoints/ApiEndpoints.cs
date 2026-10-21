@@ -11,6 +11,8 @@ namespace MiddlewareDemo.Api.Endpoints;
 
 public static class ApiEndpoints
 {
+    public const string AdminPolicy = "Admin";
+
     private const int MaxNameLength = 100;
     private const int MaxPageSize = 100;
 
@@ -35,35 +37,6 @@ public static class ApiEndpoints
     private static IResult Invalid(string field, string message) =>
         Results.ValidationProblem(new Dictionary<string, string[]> { [field] = [message] });
 
-    private static ClaimsPrincipal? GetPrincipal(HttpContext context, TokenService tokens)
-    {
-        const string scheme = "Bearer ";
-        var header = context.Request.Headers.Authorization.ToString();
-        if (!header.StartsWith(scheme, StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        return tokens.Validate(header[scheme.Length..].Trim());
-    }
-
-    private static (ClaimsPrincipal? Principal, IResult? Failure) Authorize(
-        HttpContext context, TokenService tokens, string? role = null)
-    {
-        var principal = GetPrincipal(context, tokens);
-        if (principal is null)
-        {
-            return (null, Results.Unauthorized());
-        }
-
-        if (role is not null && !principal.IsInRole(role))
-        {
-            return (null, Results.StatusCode(StatusCodes.Status403Forbidden));
-        }
-
-        return (principal, null);
-    }
-
     private static int? GetUserId(ClaimsPrincipal principal) =>
         int.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
 
@@ -86,16 +59,10 @@ public static class ApiEndpoints
 
     private static void MapUsers(WebApplication app)
     {
-        app.MapGet("/api/users/{id:int}", (int id, HttpContext context, UserService users, TokenService tokens) =>
+        app.MapGet("/api/users/{id:int}", (int id, ClaimsPrincipal principal, UserService users) =>
         {
-            var (principal, failure) = Authorize(context, tokens);
-            if (failure is not null)
-            {
-                return failure;
-            }
-
-            var isOwner = GetUserId(principal!) == id;
-            if (!isOwner && !principal!.IsInRole("admin"))
+            var isOwner = GetUserId(principal) == id;
+            if (!isOwner && !principal.IsInRole("admin"))
             {
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
             }
@@ -104,18 +71,11 @@ public static class ApiEndpoints
             return user is null
                 ? Results.NotFound()
                 : Results.Ok(new UserProfile(user.Id, user.Email, user.NationalId, user.Salary));
-        });
+        }).RequireAuthorization();
 
-        app.MapGet("/api/admin/users", (HttpContext context, UserService users, TokenService tokens) =>
-        {
-            var (_, failure) = Authorize(context, tokens, "admin");
-            if (failure is not null)
-            {
-                return failure;
-            }
-
-            return Results.Ok(users.All().Select(u => new AdminUserView(u.Id, u.Email, u.Role)));
-        });
+        app.MapGet("/api/admin/users", (UserService users) =>
+            Results.Ok(users.All().Select(u => new AdminUserView(u.Id, u.Email, u.Role))))
+            .RequireAuthorization(AdminPolicy);
     }
 
     private static void MapItems(WebApplication app)
@@ -164,14 +124,8 @@ public static class ApiEndpoints
             }
         });
 
-        app.MapPost("/api/items", async (CreateItemRequest request, HttpContext context, ItemRepository items, TokenService tokens) =>
+        app.MapPost("/api/items", async (CreateItemRequest request, ItemRepository items) =>
         {
-            var (_, failure) = Authorize(context, tokens, "admin");
-            if (failure is not null)
-            {
-                return failure;
-            }
-
             var name = request.Name?.Trim();
             if (string.IsNullOrEmpty(name) || name.Length > MaxNameLength)
             {
@@ -185,7 +139,7 @@ public static class ApiEndpoints
 
             var item = await items.AddAsync(name, request.Price);
             return Results.Created($"/api/items/{item.Id}", item);
-        });
+        }).RequireAuthorization(AdminPolicy);
 
         app.MapPost("/api/import", async (HttpRequest request) =>
         {
@@ -209,26 +163,13 @@ public static class ApiEndpoints
 
     private static void MapOrders(WebApplication app)
     {
-        app.MapGet("/api/orders", (HttpContext context, OrderStore orders, TokenService tokens) =>
+        app.MapGet("/api/orders", (ClaimsPrincipal principal, OrderStore orders) =>
+            Results.Ok(VisibleOrders(principal, orders)))
+            .RequireAuthorization();
+
+        app.MapPost("/api/orders", (CreateOrderRequest request, ClaimsPrincipal principal, OrderStore orders) =>
         {
-            var (principal, failure) = Authorize(context, tokens);
-            if (failure is not null)
-            {
-                return failure;
-            }
-
-            return Results.Ok(VisibleOrders(principal!, orders));
-        });
-
-        app.MapPost("/api/orders", (CreateOrderRequest request, HttpContext context, OrderStore orders, TokenService tokens) =>
-        {
-            var (principal, failure) = Authorize(context, tokens);
-            if (failure is not null)
-            {
-                return failure;
-            }
-
-            var ownerId = GetUserId(principal!);
+            var ownerId = GetUserId(principal);
             if (ownerId is null)
             {
                 return Results.Unauthorized();
@@ -247,17 +188,11 @@ public static class ApiEndpoints
 
             var order = orders.Add(ownerId.Value, customer, request.ItemId, request.Quantity);
             return Results.Created("/api/orders", order);
-        });
+        }).RequireAuthorization();
 
-        app.MapGet("/api/orders/summary", async (HttpContext context, OrderStore orders, ItemRepository items, TokenService tokens) =>
+        app.MapGet("/api/orders/summary", async (ClaimsPrincipal principal, OrderStore orders, ItemRepository items) =>
         {
-            var (principal, failure) = Authorize(context, tokens);
-            if (failure is not null)
-            {
-                return failure;
-            }
-
-            var all = VisibleOrders(principal!, orders);
+            var all = VisibleOrders(principal, orders);
             var catalog = await items.GetByIdsAsync(all.Select(o => o.ItemId));
 
             var lines = all.Select(order =>
@@ -267,7 +202,7 @@ public static class ApiEndpoints
             });
 
             return Results.Ok(lines);
-        });
+        }).RequireAuthorization();
     }
 
     private static IReadOnlyList<Order> VisibleOrders(ClaimsPrincipal principal, OrderStore orders)
@@ -283,11 +218,9 @@ public static class ApiEndpoints
 
     private static void MapReports(WebApplication app)
     {
-        app.MapGet("/api/reports/healthcare-claims", (HttpContext context, ReportService reports, TokenService tokens) =>
-        {
-            var (_, failure) = Authorize(context, tokens, "admin");
-            return failure ?? Results.Ok(reports.GetMedicalClaims());
-        });
+        app.MapGet("/api/reports/healthcare-claims", (ReportService reports) =>
+            Results.Ok(reports.GetMedicalClaims()))
+            .RequireAuthorization(AdminPolicy);
 
         app.MapGet("/api/reports/exchange-rates", async (ReportService reports) =>
             Results.Ok(new { rates = await reports.FetchRatesAsync() }));
@@ -295,14 +228,8 @@ public static class ApiEndpoints
 
     private static void MapFiles(WebApplication app)
     {
-        app.MapGet("/api/files/{**name}", (string name, HttpContext context, TokenService tokens) =>
+        app.MapGet("/api/files/{**name}", (string name) =>
         {
-            var (_, failure) = Authorize(context, tokens, "admin");
-            if (failure is not null)
-            {
-                return failure;
-            }
-
             var root = Path.GetFullPath(FilesRoot) + Path.DirectorySeparatorChar;
             var full = Path.GetFullPath(Path.Combine(FilesRoot, name));
             var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -314,7 +241,7 @@ public static class ApiEndpoints
 
             var stream = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
             return Results.File(stream, "application/octet-stream", Path.GetFileName(full));
-        });
+        }).RequireAuthorization(AdminPolicy);
     }
 
     private static void MapWebhooks(WebApplication app)

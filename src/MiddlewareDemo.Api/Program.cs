@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using MiddlewareDemo.Api.Endpoints;
 using MiddlewareDemo.Api.Middleware;
@@ -41,6 +42,11 @@ builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<TokenService>();
 builder.Services.AddSingleton<ItemRepository>();
 builder.Services.AddSingleton<OrderStore>();
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
+builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<TokenService>((options, tokens) => options.TokenValidationParameters = tokens.ValidationParameters);
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(ApiEndpoints.AdminPolicy, policy => policy.RequireRole("admin"));
 builder.Services.AddHttpClient<ReportService>(client => client.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddMemoryCache(options => options.SizeLimit = 1000);
 builder.Services.AddCors(options =>
@@ -94,6 +100,9 @@ app.UseCors();
 app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseMiddleware<RateLimitMiddleware>();
 app.UseMiddleware<ApiKeyMiddleware>();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapApiEndpoints();
 

@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 
 namespace MiddlewareDemo.Api.Middleware;
 
-/// Middleware de rendimiento, no de seguridad: ante un fallo interno deja pasar la peticion (fail-open). Decision intencional y documentada: la disponibilidad prima sobre el limite de uso.
+/// Limita peticiones por cliente. Ante un fallo interno rechaza la peticion (fail-closed) para que un error provocado no deje /api/auth sin limite.
 public sealed class RateLimitMiddleware
 {
     private static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
@@ -47,7 +47,8 @@ public sealed class RateLimitMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Rate limit check failed");
+            _logger.LogError(ex, "Rate limit check failed; rejecting request");
+            limited = true;
         }
 
         if (limited)

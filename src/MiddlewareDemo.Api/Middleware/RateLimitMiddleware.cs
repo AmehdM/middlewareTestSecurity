@@ -9,6 +9,7 @@ public sealed class RateLimitMiddleware
     private static readonly (string Prefix, int Limit)[] Rules =
     [
         ("/api/auth", 10),
+        ("/api/reports/exchange-rates", 10),
         ("/api/items", 100),
     ];
 

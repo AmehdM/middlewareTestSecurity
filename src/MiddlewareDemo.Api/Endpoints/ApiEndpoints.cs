@@ -5,7 +5,6 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Caching.Memory;
 using MiddlewareDemo.Api.Models;
 using MiddlewareDemo.Api.Services;
-using Newtonsoft.Json;
 
 namespace MiddlewareDemo.Api.Endpoints;
 
@@ -14,6 +13,7 @@ public static class ApiEndpoints
     public const string AdminPolicy = "Admin";
 
     private const int MaxNameLength = 100;
+    private const int MaxDescriptionLength = 500;
     private const int MaxPageSize = 100;
 
     private static readonly string FilesRoot = Path.Combine(AppContext.BaseDirectory, "files");
@@ -88,7 +88,7 @@ public static class ApiEndpoints
             }
 
             return Results.Ok(await items.GetPageAsync(page, pageSize));
-        });
+        }).RequireAuthorization();
 
         app.MapGet("/api/items/search", async (string name, ItemRepository items, IMemoryCache cache) =>
         {
@@ -105,7 +105,7 @@ public static class ApiEndpoints
             });
 
             return Results.Ok(result);
-        });
+        }).RequireAuthorization();
 
         app.MapGet("/api/items/validate-sku", (string value) =>
         {
@@ -122,7 +122,7 @@ public static class ApiEndpoints
             {
                 return Results.Ok(new { valid = false });
             }
-        });
+        }).RequireAuthorization();
 
         app.MapPost("/api/items", async (CreateItemRequest request, ItemRepository items) =>
         {
@@ -141,24 +141,21 @@ public static class ApiEndpoints
             return Results.Created($"/api/items/{item.Id}", item);
         }).RequireAuthorization(AdminPolicy);
 
-        app.MapPost("/api/import", async (HttpRequest request) =>
+        app.MapPost("/api/import", (ImportRequest request) =>
         {
-            using var reader = new StreamReader(request.Body);
-            var json = await reader.ReadToEndAsync();
+            var name = request.Name?.Trim();
+            if (string.IsNullOrEmpty(name) || name.Length > MaxNameLength)
+            {
+                return Invalid("name", $"Name is required and must be at most {MaxNameLength} characters.");
+            }
 
-            try
+            if (request.Description is { Length: > MaxDescriptionLength })
             {
-                var settings = new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.None, MaxDepth = 8 };
-                var payload = JsonConvert.DeserializeObject<ImportRequest>(json, settings);
-                return payload is null
-                    ? Invalid("body", "Body is required.")
-                    : Results.Ok(new { received = payload.Name });
+                return Invalid("description", $"Description must be at most {MaxDescriptionLength} characters.");
             }
-            catch (JsonException)
-            {
-                return Invalid("body", "Body is not valid JSON.");
-            }
-        });
+
+            return Results.Ok(new { received = name });
+        }).RequireAuthorization(AdminPolicy);
     }
 
     private static void MapOrders(WebApplication app)
@@ -223,7 +220,8 @@ public static class ApiEndpoints
             .RequireAuthorization(AdminPolicy);
 
         app.MapGet("/api/reports/exchange-rates", async (ReportService reports) =>
-            Results.Ok(new { rates = await reports.FetchRatesAsync() }));
+            Results.Ok(new { rates = await reports.FetchRatesAsync() }))
+            .RequireAuthorization();
     }
 
     private static void MapFiles(WebApplication app)

@@ -178,6 +178,66 @@ public sealed class ApiTests : IClassFixture<ApiTests.ApiFactory>
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("/api/items")]
+    [InlineData("/api/items/search?name=a")]
+    [InlineData("/api/items/validate-sku?value=abC")]
+    [InlineData("/api/reports/exchange-rates")]
+    public async Task ReadEndpoints_WithKeyButNoToken_Return401(string path)
+    {
+        var response = await _factory.CreateKeyClient().GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Items_WithUserToken_Returns200()
+    {
+        var client = await _factory.CreateUserClientAsync(Ana);
+
+        var response = await client.GetAsync("/api/items");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Import_WithoutToken_Returns401()
+    {
+        var response = await _factory.CreateKeyClient().PostAsJsonAsync("/api/import", new { name = "Widget" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Import_WithNonAdminToken_Returns403()
+    {
+        var client = await _factory.CreateUserClientAsync(Ana);
+
+        var response = await client.PostAsJsonAsync("/api/import", new { name = "Widget" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Import_WithAdminToken_Returns200()
+    {
+        var client = await _factory.CreateUserClientAsync(Admin);
+
+        var response = await client.PostAsJsonAsync("/api/import", new { name = "Widget", description = "ok" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Import_WithEmptyName_Returns400()
+    {
+        var client = await _factory.CreateUserClientAsync(Admin);
+
+        var response = await client.PostAsJsonAsync("/api/import", new { name = " " });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task Files_WithoutToken_Returns401()
     {
